@@ -680,6 +680,14 @@ public:
   }
 };
 
+
+/**
+ * \tparam ChannelCount the total number of channels
+ * \tparam VirtualCount the number of (virtual) channels per physical channel, either 1 (no virtual channels) or 3 (3 virtual channels)
+ * Example for 1 physical output with 3 virtual channels: ChannelCount = 3, VirtualCount = 3
+ * Example for 2 physical outputs with 3 virtual channels each: ChannelCount = 6, VirtualCount = 3
+ * Example for 5 physical outputs without virtual channels: ChannelCount = 5, VirtualCount = 1
+ */
 template<class HalType,class ChannelType,int ChannelCount,int VirtualCount,class List0Type=List0>
 class DimmerDevice : public MultiChannelDevice<HalType,ChannelType,ChannelCount,List0Type> {
 public:
