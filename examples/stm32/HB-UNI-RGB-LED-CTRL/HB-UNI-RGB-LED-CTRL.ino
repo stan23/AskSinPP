@@ -19,9 +19,7 @@
 #include <EEPROM.h> // the EEPROM library contains Flash Access Methods
 #include <OneWireSTM.h>
 #include <AskSinPP.h>
-
-#include <Dimmer.h>
-#include <Sensors.h>
+#include <Register.h>
 #include "analog.h"
 
 // pins definitions match this HW:
@@ -127,9 +125,9 @@ ConfigButton<RGBLEDType> cfgBtn(sdev);
 
 void setup () {
   delay(5000);
-  DINIT(57600,ASKSIN_PLUS_PLUS_IDENTIFIER);
-  buttonISR(cfgBtn,CONFIG_BUTTON_PIN);
-
+  DINIT(57600, ASKSIN_PLUS_PLUS_IDENTIFIER);
+  sdev.init(hal);
+  buttonISR(cfgBtn, CONFIG_BUTTON_PIN);
   sdev.initDone();
   DDEVINFO(sdev);
 }
