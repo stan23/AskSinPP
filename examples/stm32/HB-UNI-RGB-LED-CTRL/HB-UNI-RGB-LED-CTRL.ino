@@ -54,8 +54,8 @@
 
 //#define ENABLE_RGBW            // for SK6812 LEDs
 
-#define WSNUM_LEDS    5          // number of connected LEDs
-#define WSLED_PIN     9          // GPIO pin for LED data
+#define WSNUM_LEDS    0          // number of connected LEDs
+#define WSLED_PIN     255        // GPIO pin for LED data
 #define WSLED_TYPE    WS2812B    // LED type
 #define WSCOLOR_ORDER GRB        // order of colours
 
@@ -89,7 +89,7 @@ using namespace as;
 
 // define all device properties
 const struct DeviceInfo PROGMEM devinfo = {
-    // ID and last 6 digits of Serial are derived from STM32-UUID (see #define USE_HW_SERIAL)
+  // ID and last 6 digits of Serial are derived from STM32-UUID (see #define USE_HW_SERIAL)
   {0xF3, 0x41, 0x01},     // Device ID
   "JPRGB00001",           // Device Serial
   {0xF3, 0x41},           // Device Model
@@ -126,6 +126,7 @@ ConfigButton<RGBLEDType> cfgBtn(sdev);
 void setup () {
   delay(5000);
   DINIT(57600, ASKSIN_PLUS_PLUS_IDENTIFIER);
+  Wire.begin();
   sdev.init(hal);
   buttonISR(cfgBtn, CONFIG_BUTTON_PIN);
   sdev.initDone();
