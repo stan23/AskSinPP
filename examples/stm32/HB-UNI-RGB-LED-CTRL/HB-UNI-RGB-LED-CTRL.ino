@@ -52,15 +52,21 @@
 #define ENCODER2_CLOCK    PB9
 #define ENCODER2_DATA     PB8
 
-//#define ENABLE_RGBW            // for SK6812 LEDs
+/**
+ * This sketch supports either adressable LEDs (e.g. WS2812B or SK6812)
+ * or dump PWM LEDs.
+ * Adressable LEDs are selected by default.
+ * PWM LEDs can be chosen by enabling PWM_ENABLED. Take care that WSNUM_LEDS must be 1 in that case.
+ */
 
-#define WSNUM_LEDS    0          // number of connected LEDs
-#define WSLED_PIN     255        // GPIO pin for LED data
-#define WSLED_TYPE    WS2812B    // LED type
-#define WSCOLOR_ORDER GRB        // order of colours
+#define WSNUM_LEDS    1           // number of connected LEDs, 1 or more
+#define WSLED_PIN     255         // GPIO pin for LED data
+#define WSLED_TYPE    WS2812B     // LED type, see classes in FastLED.h
+#define WSCOLOR_ORDER GRB         // order of colours
 
+//#define ENABLE_RGBW             // for SK6812 LEDs
 
-#define PWM_ENABLED
+#define PWM_ENABLED               
 #ifdef PWM_ENABLED
   #define PWM_RED_PIN     DIMMER1_PIN
   #define PWM_GREEN_PIN   DIMMER2_PIN
@@ -69,9 +75,9 @@
   #define PWM_WHITE_ONLY  true          // in case PWM_WHITE_PIN is used: shall only that white LED be active for white colour?
 #endif
 
-#define SLOW_PROGRAM_TIMER     30     // transition waiting time in ms
-#define NORMAL_PROGRAM_TIMER   15     // transition waiting time in ms
-#define FAST_PROGRAM_TIMER     0      // transition waiting time in ms
+#define SLOW_PROGRAM_TIMER     30       // transition waiting time in ms
+#define NORMAL_PROGRAM_TIMER   15       // transition waiting time in ms
+#define FAST_PROGRAM_TIMER     0        // transition waiting time in ms
 #define FIRE_PROGRAM_COOLING   55
 #define FIRE_PROGRAM_SPARKLING 120
 
