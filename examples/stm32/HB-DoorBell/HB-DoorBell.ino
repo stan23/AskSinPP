@@ -1,6 +1,7 @@
 //- -----------------------------------------------------------------------------------------------------------------------
 // AskSin++
 // 2017-03-20 papa Creative Commons - http://creativecommons.org/licenses/by-nc-sa/3.0/de/
+// ci-test=yes board=maplemini aes=no
 //- -----------------------------------------------------------------------------------------------------------------------
 
 // define this to read the device id, serial and device type from bootloader section
@@ -8,7 +9,6 @@
 
 //#define STORAGEDRIVER at24c32
 #define STORAGEDRIVER at24cX<0x50,128,32>
-#define NORTC
 
 #include <SPI.h>    // when we include SPI.h - we can use LibSPI class
 #include <Wire.h>

@@ -90,12 +90,12 @@ public:
         crc = HalType::crc16(crc,l.getRegister(i));
       }
       // add register list 3
-      l = ch.getList3(0);
+      l = ch.getList3((uint8_t)0);
       for( uint8_t i=0; i<l.getSize(); ++i ) {
         crc = HalType::crc16(crc,l.getRegister(i));
       }
       // add register list 4
-      l = ch.getList4(0);
+      l = ch.getList4((uint8_t)0);
       for( uint8_t i=0; i<l.getSize(); ++i ) {
         crc = HalType::crc16(crc,l.getRegister(i));
       }
@@ -130,6 +130,7 @@ public:
 
   void initDone () {
     // trigger initial config changed - to allow scan/caching of list data
+    this->hasConfigChanged(true);
     this->configChanged();
     for( uint8_t cdx=1; cdx<=channels(); ++cdx ) {
       channel(cdx).configChanged();
@@ -151,11 +152,13 @@ public:
       DPRINTLN(F("RESET"));
       storage().reset();
       storage().store();
-#if ARDUINO_ARCH_AVR
+  #if ARDUINO_ARCH_AVR
       resetFunc();
-#elif ARDUINO_ARCH_STM32F1
+  #elif ARDUINO_ARCH_STM32F1
       nvic_sys_reset();
-#endif
+  #elif defined (ARDUINO_ARCH_STM32) && defined (STM32L1xx) 
+      NVIC_SystemReset();
+  #endif
     }
   }
 
@@ -260,6 +263,7 @@ public:
              }
            }
            if( success == true ) {
+             this->hasConfigChanged(true);
              ch->configChanged();
              storage().store();
              answer = REPLAY_ACK;
@@ -282,6 +286,7 @@ public:
              }
            }
            if( success == true ) {
+             this->hasConfigChanged(true);
              ch->configChanged();
              storage().store();
              answer = REPLAY_ACK;
@@ -328,6 +333,7 @@ public:
          }
          // CONFIG_END
          else if( msubc == AS_CONFIG_END ) {
+           this->hasConfigChanged(true);
            if( cfgList.address() == list0.address() ) {
              this->led().set(LedStates::nothing);
              this->configChanged();
@@ -412,6 +418,19 @@ public:
          answer = REPLAY_ACK;
        }
 #ifndef SENSOR_ONLY
+       else if (mtype == AS_MESSAGE_SWITCH_EVENT) {
+         RemoteEventMsg& pm = msg.switchSim().toEventMsg();
+         //DPRINT("X> "); pm.dump();
+
+         for (uint8_t cdx = 1; cdx <= this->channels(); ++cdx) {
+           ChannelType* c = &channel(cdx);
+           //DPRINT("cnl: "); DPRINTLN(cdx);
+           if (c->inhibit() == false && c->has(pm.peer()) == true) {
+             c->process(pm);
+           }
+         }
+         answer = REPLAY_ACK;
+       }
        else if (mtype == AS_MESSAGE_REMOTE_EVENT || mtype == AS_MESSAGE_SENSOR_EVENT) {
          answer = REPLAY_NACK;
          const RemoteEventMsg& pm = msg.remoteEvent();
@@ -455,8 +474,10 @@ public:
        }
      }
      else {
+#ifndef HIDE_IGNORE_MSG
        DPRINT(F("ignore "));
        msg.dump();
+#endif
        return false;
      }
      // send ack/nack
@@ -481,7 +502,7 @@ public:
       ChannelType& c = channel(ch);
       if (numlist == 1) {
         return c.getList1();
-      } else if (numlist == 2) {
+      } else if (c.hasList2() && numlist == 2) {
         return c.getList2();
       } else if (c.hasList3() && numlist == 3) {
         return c.getList3(peer);

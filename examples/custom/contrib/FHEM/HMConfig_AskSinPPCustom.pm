@@ -59,6 +59,19 @@ $HMConfig::culHmRegDefine{"rdStallbizHeatOnDewfall"}     = {a=>22.0,s=>1,l=>1,mi
 $HMConfig::culHmRegDefine{"stormUpperThreshold"}         = {a=>7.0, s=>1,l=>1,min=>0,max=>0xc8,c=>'',   p=>'n',f=>'',  u=>'',    d=>1,t=>"Storm Upper Threshold"};
 $HMConfig::culHmRegDefine{"stormLowerThreshold"}         = {a=>8.0, s=>1,l=>1,min=>0,max=>0xc8,c=>'',   p=>'n',f=>'',  u=>'',    d=>1,t=>"Storm Lower Threshold"};
 
+# HB-OU-MP3-LED
+$HMConfig::culHmRegDefine{"deviceLedMode"}                = {a=>5.6,s=>0.2,l=>0,min=>0,max=>0,c=>'',p=>'n',f=>'',u=>'',d=>1,t=>"deviceLedMode"};
+$HMConfig::culHmRegDefine{"hbInterruptRunning"}           = {a=>126,s=>0.1,l=>1,min=>0,max=>1,c=>'',p=>'n',f=>'',u=>'',d=>1,t=>"hbInterruptRunning"};
+$HMConfig::culHmRegDefine{"hbLedCount"}                   = {a=>127,s=>1,l=>1,min=>1,max=>32,c=>'',p=>'n',f=>'',u=>'',d=>1,t=>"hbLedCount"};
+$HMConfig::culHmRegDefine{"shortActType"}                 = {a=>0x24,s=>1.0,l=>3,min=>0,max=>255,c=>'',p=>'y',f=>'',u=>'',d=>1,t=>"Led color or Mp3 Nummer"};
+$HMConfig::culHmRegDefine{"shortActNum"}                  = {a=>0x25,s=>1.0,l=>3,min=>0,max=>255,c=>'',p=>'y',f=>'',u=>'',d=>1,t=>"BPM or Repeat"};
+$HMConfig::culHmRegDefine{"shortActIntens"}               = {a=>0x2B,s=>1.0,l=>3,min=>0,max=>255,c=>'',p=>'y',f=>'',u=>'',d=>1,t=>"Volume or Led Brightness"};
+$HMConfig::culHmRegDefine{"longActType"}                  = {a=>0xA4,s=>1.0,l=>3,min=>0,max=>255,c=>'',p=>'y',f=>'',u=>'',d=>1,t=>"Led color or Mp3 Nummer"};
+# Red=11, Green=21, Yellow=31, Blue=41, Violet=51, Cyan=61, White=71, Orange=81
+$HMConfig::culHmRegDefine{"longActNum"}                   = {a=>0xA5,s=>1.0,l=>3,min=>0,max=>255,c=>'',p=>'y',f=>'',u=>'',d=>1,t=>"BPM or Repeat"};
+$HMConfig::culHmRegDefine{"longActIntens"}                = {a=>0xAB,s=>1.0,l=>3,min=>0,max=>255,c=>'',p=>'y',f=>'',u=>'',d=>1,t=>"Volume or Led Brightness"};
+# Volume0=0, Volume10=20, Volume20=40, Volume40=60, .... Volume100=200
+
 
 $HMConfig::culHmRegType{ibutton}   = { peerNeedsBurst=>1, expectAES=>1, addressHi=>1, addressLo=>1 };
 $HMConfig::culHmRegType{values}    = { eventDlyTime=>1 };
@@ -336,6 +349,35 @@ $customMsg{"HB-Sec-RHS-3"} = sub {
   return @evtEt;
 };
 
+# water contact WDS3
+$HMConfig::culHmModel{"F121"} = {name=>"HB-Sec-WDS-3",st=>'custom',cyc=>'28:00',rxt=>'c:w:l',lst=>'1,4:1p',chn=>""};
+$HMConfig::culHmChanSets{"HB-Sec-WDS-3"} = $HMConfig::culHmSubTypeSets{"THSensor"};
+$HMConfig::culHmRegModel{"HB-Sec-WDS-3"}   = { lowBatLimitBA2=>1, transmDevTryMax=>1, cyclicInfoMsg=>1, 
+                                               msgWdsPosA=>1, msgWdsPosB=>1, msgWdsPosC=>1, eventFilterTimeB=>1 };
+$customMsg{"HB-Sec-WDS-3"} = sub {
+  my ($msg,$target) = @_;
+  my $batflags = 0;
+  my $bat = 0;
+  my $device = main::CUL_HM_id2Hash($msg->from);
+  my @evtEt = $msg->processThreeState($target,(0=>'dry',100=>'damp',200=>'water')) if $msg->channel == 1;
+  if( $msg->isSensor ) {
+    # add battery value
+    $bat = $msg->payloadWord(3);
+    $batflags = $msg->payloadByte(0);
+  }
+  if( $msg->isStatus ) {
+    # add battery value
+    $bat = $msg->payloadWord(5);
+    $batflags = $msg->payloadByte(3);    
+  }
+  # add battery state
+  my $batstat = "ok";
+  $batstat = "low" if (($batflags & 0x80)==0x80);
+  push @evtEt,[$device,1,"battery:".$batstat];
+  push @evtEt,[$device,1,"batVoltage:".sprintf('%.2f',$bat/1000)];
+  return @evtEt;
+};
+
 # velux blind - simple blind with burst and battery state
 $HMConfig::culHmModel{"F20A"} = {name=>"HB-LC-Bl1-Velux",st=>'custom',cyc=>'',rxt=>'b',lst=>'1,3',chn=>""};
 $HMConfig::culHmChanSets{"HB-LC-Bl1-Velux00"} = $HMConfig::culHmSubTypeSets{"blindActuator"};
@@ -351,6 +393,25 @@ $customMsg{"HB-LC-Bl1-Velux"} = sub {
     push @evtEt,[$device,1,"battery:".$batstat];
     return @evtEt;
   }
+  return ();
+};
+
+# switch with motion and weather
+$HMConfig::culHmModel{"F20B"} = {name=>"HB-LC-SW1-MDIR",st=>'custom',cyc=>'',rxt=>'',lst=>'1,3:1p,4:2p',chn=>"Sw:1:1,Motion:2:2,Value:3:3"};
+$HMConfig::culHmChanSets{"HB-LC-SW1-MDIR00"}{fwUpdate} = "<filename>";
+$HMConfig::culHmChanSets{"HB-LC-SW1-MDIR01"} = $HMConfig::culHmSubTypeSets{"switch"};
+$HMConfig::culHmChanSets{"HB-LC-SW1-MDIR02"} = $HMConfig::culHmSubTypeSets{"THSensor"};
+$HMConfig::culHmChanSets{"HB-LC-SW1-MDIR03"} = $HMConfig::culHmSubTypeSets{"Values"};
+#$HMConfig::culHmRegModel{"HB-LC-SW1-MDIR"}   = {};
+$HMConfig::culHmRegChan {"HB-LC-SW1-MDIR01"} = $HMConfig::culHmRegType{switch};
+$HMConfig::culHmRegChan {"HB-LC-SW1-MDIR02"} = $HMConfig::culHmRegType{motionDetector};
+$HMConfig::culHmRegChan {"HB-LC-SW1-MDIR03"} = $HMConfig::culHmRegType{values};
+$customMsg{"HB-LC-SW1-MDIR"} = sub {
+  my ($msg,$target) = @_;
+  my $channel = $msg->channel;
+  return $msg->processValues if $msg->isValues;
+  return $msg->processMotion($target) if $channel == 2;
+  return $msg->processSwitchStatus($target) if $msg->isStatus;
   return ();
 };
 
@@ -536,6 +597,7 @@ $customMsg{"HB-UNI-Sen-WEA"} = sub {
   if( defined($channel) ) {
 	if( $msg->isWeather ) {
 		my $temp = $msg->payloadWord(0) & 0x7fff;
+        $temp = -1 - ($temp ^ 0x7FFF) if ($temp & 0x4000);
 		my $pressure = $msg->payloadWord(2);
 		my $humidity = $msg->payloadByte(4);
 		my $lux = $msg->payload3Byte(5);
@@ -580,6 +642,40 @@ $customMsg{"HB-UNI-Sen-WEA"} = sub {
       main::Log 1,"No channel for ".$msg->channelId(1);
   }
   return @evtEt;
+};
+
+################################################################################################################################
+# HB-OU-MP3-LED
+$HMConfig::culHmModel{"F344"} = {name=>"HB-OU-MP3-LED",st=>'custom',cyc=>'',rxt=>'',lst=>'1,3:1p.2p',chn=>"LED:1:1,MP3:2:2"};
+$HMConfig::culHmChanSets{"HB-OU-MP3-LED"}{fwUpdate} = "<filename>";
+$HMConfig::culHmChanSets{"HB-OU-MP3-LED01"} = $HMConfig::culHmSubTypeSets{"switch"};
+$HMConfig::culHmChanSets{"HB-OU-MP3-LED02"} = $HMConfig::culHmSubTypeSets{"switch"};
+$HMConfig::culHmRegModel{"HB-OU-MP3-LED"}   = { deviceLedMode  =>1};
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED01"} = $HMConfig::culHmRegType{switch};
+# add extra register
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED01"}{"hbLedCount"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED01"}{"hbInterruptRunning"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED01"}{"shortActType"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED01"}{"shortActNum"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED01"}{"shortActIntens"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED01"}{"longActType"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED01"}{"longActNum"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED01"}{"longActIntens"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED02"} = $HMConfig::culHmRegType{switch};
+# add extra register
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED02"}{"hbInterruptRunning"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED02"}{"shortActType"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED02"}{"shortActNum"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED02"}{"shortActIntens"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED02"}{"longActType"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED02"}{"longActNum"} = 1;
+$HMConfig::culHmRegChan {"HB-OU-MP3-LED02"}{"longActIntens"} = 1;
+
+$customMsg{"HB-OU-MP3-LED"} = sub {
+  my ($msg,$target) = @_;
+  my $channel = $msg->channel;
+  return $msg->processSwitchStatus($target) if $msg->isStatus;
+  return ();
 };
 
 

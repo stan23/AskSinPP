@@ -20,8 +20,9 @@
 #ifdef USE_HW_SERIAL
   #if defined(__AVR_ATmega644__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__) || defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega328PB__)
     #include <avr/boot.h>
-  #elif defined (ARDUINO_ARCH_STM32F1)
-  #else
+#elif defined (ARDUINO_ARCH_STM32F1)
+#elif defined (ARDUINO_ARCH_STM32) && defined (STM32L1xx)
+#else
     #error Using Hardware serial is not supported on MCU type currently used
   #endif
 #endif
@@ -103,10 +104,11 @@ protected:
   KeyStore    kstore;
 
   const DeviceInfo& info;
-  uint8_t      numChannels;
+  bool         cfgChanged;  // :1; take ~60byte more flash
+  uint8_t      numChannels; // :7;
 
 public:
-  Device (const DeviceInfo& i,uint16_t addr,List0Type& l,uint8_t ch) : hal(0), list0(l), msgcount(0), lastmsg(0), kstore(addr), info(i), numChannels(ch) {
+  Device (const DeviceInfo& i,uint16_t addr,List0Type& l,uint8_t ch) : hal(0), list0(l), msgcount(0), lastmsg(0), kstore(addr), info(i), cfgChanged(false), numChannels(ch) {
 #ifdef USE_HW_SERIAL
     device_id[0]=0x00;
 #endif
@@ -122,6 +124,16 @@ public:
   Activity& activity () { return hal->activity; }
 
   Message& message () { return msg; }
+
+  bool hasConfigChanged () {
+    bool value = cfgChanged;
+    cfgChanged = false;
+    return value;
+  }
+
+  void hasConfigChanged(bool c) {
+    cfgChanged = c;
+  }
 
   void channels (uint8_t num) {
     numChannels = num;
@@ -183,6 +195,11 @@ public:
       device_id[0] = (uint8_t)(crc & 0x000000ff);
       device_id[1] = (uint8_t)(crc >> 8 & 0x000000ff);
       device_id[2] = (uint8_t)(crc >> 16 & 0x000000ff);
+  #elif defined (ARDUINO_ARCH_STM32) && (defined STM32L1xx)
+      uint32_t crc = AskSinBase::crc24((uint8_t*)0x1FF80050, 12);
+      device_id[0] = (uint8_t)(crc & 0x000000ff);
+      device_id[1] = (uint8_t)(crc >> 8 & 0x000000ff);
+      device_id[2] = (uint8_t)(crc >> 16 & 0x000000ff);
   #else
       device_id[0] = boot_signature_byte_get(21);
       device_id[1] = boot_signature_byte_get(22);
@@ -200,8 +217,8 @@ public:
   void getDeviceSerial (uint8_t* serial) {
 #ifdef USE_OTA_BOOTLOADER
     HalType::pgm_read((uint8_t*)serial,OTA_SERIAL_START,10);
-#elif defined(USE_HW_SERIAL)
-  #ifdef ARDUINO_ARCH_STM32F1
+#elif defined (USE_HW_SERIAL)
+  #if defined (ARDUINO_ARCH_STM32F1) || (defined (ARDUINO_ARCH_STM32) && (defined STM32L1xx))
     memcpy_P(serial,info.Serial,4);
     uint8_t* s = serial+4;
     for( int i=0; i<3; ++i ) {
@@ -430,7 +447,7 @@ public:
     uint8_t  current=0;
     uint8_t* buf=pm.data();
     for( uint8_t i=0; i<channel.peers(); ++i ) {
-      Peer p = channel.peer(i);
+      Peer p = channel.peerat(i);
       if( p.valid() == true ) {
         memcpy(buf,&p,sizeof(Peer));
         buf+=sizeof(Peer);
@@ -462,7 +479,7 @@ public:
   void sendPeerEvent (Message& msg,const ChannelType& ch) {
     bool sendtopeer=false;
     for( int i=0; i<ch.peers(); ++i ){
-      Peer p = ch.peer(i);
+      Peer p = ch.peerat(i);
       if( p.valid() == true ) {
         // skip if this is not the first peer of that device
         if( ch.peerfor(p) < i ) {
@@ -513,7 +530,7 @@ public:
     // go over all peers, get first external device
     // check if one of the peers needs a burst to wakeup
     for( uint8_t i=0; i<ch.peers(); ++i ) {
-      Peer p = ch.peer(i);
+      Peer p = ch.peerat(i);
       if( p.valid() == true ) {
         if( msg.from() != p ) {
           if( todev.valid() == false ) {

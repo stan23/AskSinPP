@@ -194,6 +194,12 @@ public:
     PINTYPE::setLow(MOSI);
   }
 
+  void shutdown () {
+    PINTYPE::setInput(CS);
+    PINTYPE::setInput(MOSI);
+    PINTYPE::setInput(SCLK);
+  }
+
   void select () {
     PINTYPE::setLow(CS);
   }
@@ -259,15 +265,30 @@ public:
 
 
 #ifdef SPI_MODE0
-
 template <uint8_t CS,uint32_t CLOCK=2000000, BitOrder BITORDER=SPI_BITORDER_MSBFIRST, uint8_t MODE=SPI_MODE0>
 class LibSPI {
-
 public:
   LibSPI () {}
   void init () {
-    pinMode(CS,OUTPUT);
+#if defined ARDUINO_ARCH_STM32 && defined STM32L1xx
+    SPI.setMOSI(PIN_SPI_MOSI);
+    SPI.setMISO(PIN_SPI_MISO);
+    SPI.setSCLK(PIN_SPI_SCK);
+#endif
+    pinMode(CS, OUTPUT);
     SPI.begin();
+  }
+
+  void shutdown () {
+    SPI.end();
+    pinMode(CS, INPUT);
+#if defined ARDUINO_ARCH_STM32 && defined STM32L1xx
+    pinMode(PIN_SPI_MOSI, INPUT);
+    pinMode(PIN_SPI_SCK, INPUT);
+#else
+    pinMode(MOSI, INPUT);
+    pinMode(SCK, INPUT);
+#endif
   }
 
   void select () {
@@ -381,7 +402,7 @@ public:
   bool write (__attribute__ ((unused)) const Message& msg, __attribute__ ((unused)) uint8_t burst) { return false; }
 };
 
-template <class SPIType>
+template <class SPIType, uint8_t PWRPIN>
 class CC1101 {
 protected:
   SPIType spi;
@@ -415,9 +436,20 @@ public:
 #else
     spi.strobe(CC1101_SPWD);                // enter power down state
 #endif
+
+    if (PWRPIN < 0xff) {
+      spi.shutdown();
+      digitalWrite(PWRPIN, HIGH);
+    }
   }
 
   void wakeup (bool flush) {
+    if (PWRPIN < 0xff) {
+      digitalWrite(PWRPIN, LOW);
+      _delay_ms(10);
+      init();
+    }
+
     spi.ping();
     if( flush==true ) {
       flushrx();
@@ -461,6 +493,11 @@ public:
 
 
   bool init () {
+    if (PWRPIN < 0xff) {
+      pinMode(PWRPIN, OUTPUT);
+      digitalWrite(PWRPIN, LOW);
+      _delay_ms(10);
+    }
     spi.init();                 // init the hardware to get access to the RF modul
 
 #ifdef USE_OTA_BOOTLOADER_FREQUENCY
@@ -763,11 +800,11 @@ protected:
 
 };
 
-template <class SPIType ,uint8_t GDO0,int SENDDELAY=100,class HWRADIO=CC1101<SPIType> >
+template <class SPIType ,uint8_t GDO0, uint8_t PWRPIN=0xff, int SENDDELAY=100,class HWRADIO=CC1101<SPIType,PWRPIN> >
 class Radio : public HWRADIO {
 
   static void isr () {
-    ((Radio<SPIType,GDO0,SENDDELAY,HWRADIO>*)__gb_radio)->handleInt();
+    instance().handleInt();
   }
 
   class MinSendTimeout : public Alarm {
@@ -792,14 +829,16 @@ class Radio : public HWRADIO {
     }
 
     void setTimeout (uint16_t millis=SENDDELAY) {
-      // cancel possible old timeout
-      sysclock.cancel(*this);
-      // set to 100ms
-      set(millis2ticks(millis));
-      // signal new wait cycle
-      wait = true;
-      // add to system clock
-      sysclock.add(*this);
+      if( millis > 0 ) {
+        // cancel possible old timeout
+        sysclock.cancel(*this);
+        // set to 100ms
+        set(millis2ticks(millis));
+        // signal new wait cycle
+        wait = true;
+        // add to system clock
+        sysclock.add(*this);
+      }
     }
 
     virtual void trigger(__attribute__ ((unused)) AlarmClock& clock) {
@@ -819,14 +858,21 @@ public:
     timeout.waitTimeout();
   }
 
+  static Radio<SPIType,GDO0,PWRPIN,SENDDELAY,HWRADIO>& instance () {
+    return *((Radio<SPIType,GDO0,PWRPIN,SENDDELAY,HWRADIO>*)__gb_radio);
+  }
+
 private:
-  volatile uint8_t intread;
-  volatile uint8_t sending;
-  volatile bool idle;
+  enum States { IDLE=0x1, SENDING=0x2, READ=0x4, ALIVE=0x8, READ_ALIVE=0xc };
+  volatile uint8_t state;
   Message buffer;
 
+  bool isState(States s) { return (state & s)==s; }
+  void setState(States s) { state |= s; }
+  void unsetState(States s) { state &= ~s; }
+
 public:   //---------------------------------------------------------------------------------------------------------
-  Radio () :  intread(0), sending(0), idle(false) {}
+  Radio () : state(ALIVE) {}
 
   bool init () {
     // ensure ISR if off before we start to init CC1101
@@ -845,28 +891,34 @@ public:   //--------------------------------------------------------------------
   }
 
   void setIdle () {
-    if( idle == false ) {
+    if( isState(IDLE) == false ) {
       HWRADIO::setIdle();
-      idle = true;
+      setState(IDLE);
     }
   }
 
   void wakeup (bool flush=true) {
-    if( idle == true ) {
+    if( isState(IDLE) == true ) {
       HWRADIO::wakeup(flush);
-      idle = false;
+      unsetState(IDLE);
     }
   }
 
   bool isIdle () {
-    return idle;
+    return isState(IDLE);
   }
 
   void handleInt () {
-    if( sending == 0 ) {
+    if( isState(SENDING) == false ) {
 //      DPRINT(" * "); DPRINTLN(millis());
-      intread = 1;
+      setState(READ_ALIVE);
     }
+  }
+
+  bool clearAlive () {
+    bool result = isState(ALIVE);
+    unsetState(ALIVE);
+    return result;
   }
 
   bool detectBurst () {
@@ -901,10 +953,10 @@ void disable () {
 
   // read the message form the internal buffer, if any
   uint8_t read (Message& msg) {
-    if( intread == 0 )
+    if( isState(READ) == false )
       return 0;
 
-    intread = 0;
+    unsetState(READ);
     uint8_t len = this->rcvData(buffer.buffer(),buffer.buffersize());
     if( len > 0 ) {
       buffer.length(len);
@@ -943,35 +995,13 @@ void disable () {
     buffer.encode();
     return sndData(buffer.buffer(),buffer.length(),burst);
   }
-/*
-  bool readAck (const Message& msg) {
-    if( intread == 0 )
-      return false;
-	
-    intread = 0;
-    idle = false;
-    bool ack=false;
-    uint8_t len = this->rcvData(buffer.buffer(),buffer.buffersize());
-    if( len > 0 ) {
-      buffer.length(len);
-      // decode the message
-      buffer.decode();
-      ack = buffer.isAck() &&
-           (buffer.from() == msg.to()) &&
-           (buffer.to() == msg.from()) &&
-           (buffer.count() == msg.count());
-      // reset buffer
-      buffer.clear();
-    }
-    return ack;
-  }
-*/
+
   uint8_t sndData(uint8_t *buf, uint8_t size, uint8_t burst) {
     timeout.waitTimeout();
     this->wakeup();
-    sending = 1;
+    setState(SENDING);
     uint8_t result = HWRADIO::sndData(buf,size,burst);
-    sending = 0;
+    unsetState(SENDING);
     return result;
   }
 

@@ -38,9 +38,25 @@
 
 namespace as {
 
+
+DEFREGISTER(DimmerReg0, MASTERID_REGS, DREG_CONFBUTTONTIME, DREG_LOCALRESETDISABLE,
+  DREG_SPEEDMULTIPLIER)
+
+class DimmerList0 : public RegList0<DimmerReg0> {
+public:
+  DimmerList0(uint16_t addr) : RegList0<DimmerReg0>(addr) {}
+
+  void defaults() {
+    clear();
+    confButtonTime(255);
+    localResetDisable(0);
+    speedMultiplier(5);
+  }
+}; 
+  
 DEFREGISTER(DimmerReg1,CREG_AES_ACTIVE,CREG_TRANSMITTRYMAX,CREG_OVERTEMPLEVEL,
-    CREG_REDUCETEMPLEVEL,CREG_REDUCELEVEL,CREG_POWERUPACTION,CREG_STATUSINFO,
-    CREG_CHARACTERISTIC,CREG_LOGICCOMBINATION)
+  CREG_REDUCETEMPLEVEL,CREG_REDUCELEVEL,CREG_POWERUPACTION,CREG_STATUSINFO,
+  CREG_CHARACTERISTIC,CREG_LOGICCOMBINATION)
 
 class DimmerList1 : public RegList1<DimmerReg1> {
 public:
@@ -188,14 +204,15 @@ public:
   void single() {
     defaults();
     DimmerPeerList ssl = sh();
-    ssl.jtOn(AS_CM_JT_OFFDELAY);
-    ssl.jtOff(AS_CM_JT_ONDELAY);
-    ssl.jtDlyOn(AS_CM_JT_RAMPON);
-    ssl.jtDlyOff(AS_CM_JT_RAMPOFF);
-    ssl.jtRampOn(AS_CM_JT_ON);
-    ssl.jtRampOff(AS_CM_JT_OFF);
+    ssl.actionType(AS_CM_ACTIONTYPE_INACTIVE);
+    //ssl.jtOn(AS_CM_JT_OFFDELAY);
+    //ssl.jtOff(AS_CM_JT_ONDELAY);
+    //ssl.jtDlyOn(AS_CM_JT_RAMPON);
+    //ssl.jtDlyOff(AS_CM_JT_RAMPOFF);
+    //ssl.jtRampOn(AS_CM_JT_ON);
+    //ssl.jtRampOff(AS_CM_JT_OFF);
     ssl = lg();
-    ssl.actionType(AS_CM_ACTIONTYPE_TOGGLEDIM_TO_COUNTER);
+    ssl.actionType(AS_CM_ACTIONTYPE_INACTIVE);
   }
 
 };
@@ -309,8 +326,8 @@ class DimmerStateMachine {
 
     BlinkAlarm(DimmerStateMachine& m) : Alarm(0), sm(m), tack(millis2ticks(500)), diff(0) {}
     void init(DimmerPeerList l) {
-      if (!l.offDelayBlink()) return;
       origlevel = sm.status();
+      if (!l.offDelayBlink()) return;
       //if (origlevel < diff + 20) return;
       diff = origlevel / 4;
       set(tack);
@@ -658,7 +675,7 @@ public:
   }
 };
 
-template <class HalType,int PeerCount,class List0Type=List0>
+template <class HalType,int PeerCount,class List0Type= DimmerList0>
 class DimmerChannel : public ActorChannel<HalType,DimmerList1,DimmerList3,PeerCount,List0Type,DimmerStateMachine> {
   uint8_t* phys;
 protected:
@@ -678,11 +695,13 @@ public:
       }
     }
   }
+
 };
 
-template<class HalType,class ChannelType,int ChannelCount,int VirtualCount,class List0Type=List0>
+template<class HalType,class ChannelType,int ChannelCount,int VirtualCount,class List0Type= DimmerList0>
 class DimmerDevice : public MultiChannelDevice<HalType,ChannelType,ChannelCount,List0Type> {
 public:
+//  bool configHasChanged = false;
   typedef MultiChannelDevice<HalType,ChannelType,ChannelCount,List0Type> DeviceType;
 
   DimmerDevice (const DeviceInfo& info,uint16_t addr) : DeviceType(info,addr) {}
@@ -695,10 +714,11 @@ public:
   DimmerChannelType& dimmerChannel(uint8_t ch) {
     return this->channel(ch);
   }
+
 };
 
 
-template<class HalType,class DimChannelType,class RmtChannelType,int DimChannelCount,int DimVirtualCount,int RmtChannelCount, class List0Type=List0>
+template<class HalType,class DimChannelType,class RmtChannelType,int DimChannelCount,int DimVirtualCount,int RmtChannelCount, class List0Type= DimmerList0>
 class DimmerAndRemoteDevice : public ChannelDevice<HalType, VirtBaseChannel<HalType, List0Type>, DimChannelCount + RmtChannelCount, List0Type> {
 
 public:
@@ -807,23 +827,38 @@ public:
 
   PWM& pwm (uint8_t num) { return pwms[num]; }
 
-  void initChannels () {
-    for( uint8_t i=1; i<=physicalCount(); ++i ) {
-      for( uint8_t j=i; j<=channelCount(); j+=physicalCount() ) {
-        dimmer.dimmerChannel(j).setPhysical(physical[i-1]);
+  void initChannels() {
+    for (uint8_t i = 1; i <= physicalCount(); ++i) {
+      for (uint8_t j = i; j <= channelCount(); j += physicalCount()) {
+        dimmer.dimmerChannel(j).setPhysical(physical[i - 1]);
+        dimmer.dimmerChannel(j).setLevel(0, 0, 0xffff);
+
         bool powerup = dimmer.dimmerChannel(j).getList1().powerUpAction();
-        dimmer.dimmerChannel(j).setLevel(powerup == true ? 200 : 0,0,0xffff);
+        Peer ownID(1);
+        dimmer.getDeviceID(ownID);
+        DimmerList3 l3 = dimmer.dimmerChannel(j).getList3(ownID);
+        //DPRINT(F("init cnl ")); DPRINT(j);
+
+        if (powerup == true && l3.valid() == true) {
+          //DPRINTLN(F(", powerup"));
+          typename DimmerList3::PeerList pl = l3.sh();
+          //  pl.dump();
+          dimmer.dimmerChannel(j).remote(pl, 1);
+        } else {
+          //DPRINTLN(F(", set level 0"));
+        }
       }
     }
   }
 
   virtual void updatePhysical () {
+    checkParam();
     // DPRINT("Pin ");DHEX(pin);DPRINT("  Val ");DHEXLN(calcPwm());
     for( uint8_t i=0; i<physicalCount(); ++i ) {
       uint8_t value = (uint8_t)combineChannels(i+1);
       value = (((uint16_t)factor[i] * (uint16_t)value) / 200);
-      if( physical[i] != value ) {
-        // DPRINT("Ch: ");DDEC(i+1);DPRINT(" Phy: ");DDECLN(value);
+      if (physical[i] != value) {
+        //DPRINT("Ch: "); DDEC(i + 1); DPRINT(" sm: "); DPRINT(dimmer.sm); DPRINT(" Phy: "); DDECLN(value);
         physical[i]  = value;
         pwms[i].set(physical[i]);
       }
@@ -939,16 +974,16 @@ public:
         }
     }
 
-  void setTemperature (uint16_t temp) {
-    uint8_t t = temp/10;
+  void setTemperature (int16_t temp) {
+    temp = temp/10;
     for( uint8_t i=1; i<=physicalCount(); ++i ) {
       typename DimmerType::DimmerChannelType& c = dimmer.dimmerChannel(i);
-      if( c.getList1().overTempLevel() <= t ) {
+      if( (int16_t)c.getList1().overTempLevel() <= temp ) {
         factor[i-1] = 0; // overtemp -> switch off
         c.overheat(true);
         c.reduced(false);
       }
-      else if( c.getList1().reduceTempLevel() <= t ) {
+      else if( (int16_t)c.getList1().reduceTempLevel() <= temp ) {
         factor[i-1] = c.getList1().reduceLevel();
         c.overheat(false);
         c.reduced(true);
@@ -960,6 +995,17 @@ public:
       }
     }
   }
+
+  void checkParam() {
+    bool cc = this->dimmer.hasConfigChanged();
+    if (cc == false) return;
+    for (uint8_t i = 0; i < physicalCount(); ++i) {
+      uint8_t speedMultiplier = dimmer.getList0().speedMultiplier();
+      uint8_t characteristic = dimmer.dimmerChannel(i + 1).getList1().characteristic();
+      pwms[i].param(speedMultiplier, characteristic);
+    }
+  }
+
 };
 
 
@@ -977,6 +1023,7 @@ public:
   virtual ~DualWhiteControl () {}
 
   virtual void updatePhysical () {
+    this->checkParam();
     uint16_t bright = this->combineChannels(1);
     uint16_t adjust = this->combineChannels(2);
     // set the values

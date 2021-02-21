@@ -1,6 +1,7 @@
 //- -----------------------------------------------------------------------------------------------------------------------
 // AskSin++
 // 2016-10-31 papa Creative Commons - http://creativecommons.org/licenses/by-nc-sa/3.0/de/
+// ci-test=yes board=328p aes=no
 //- -----------------------------------------------------------------------------------------------------------------------
 
 // define this to read the device id, serial and device type from bootloader section
@@ -124,7 +125,7 @@ public:
 };
 
 #ifdef USE_RTC
-typedef WeatherChannel<Hal,RTC,Sensors,PEERS_PER_CHANNEL,EXTRAMILLIS,WeatherList0> ChannelType;
+typedef WeatherChannel<Hal,RealTimeClock,Sensors,PEERS_PER_CHANNEL,EXTRAMILLIS,WeatherList0> ChannelType;
 #else
 typedef WeatherChannel<Hal,SysClock,Sensors,PEERS_PER_CHANNEL,EXTRAMILLIS,WeatherList0> ChannelType;
 #endif

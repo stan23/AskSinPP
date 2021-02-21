@@ -6,9 +6,19 @@
 #ifndef __ASKSINPP_h__
 #define __ASKSINPP_h__
 
-#define ASKSIN_PLUS_PLUS_VERSION "4.1.7"
+#define ASKSIN_PLUS_PLUS_MAJOR 5
+#define ASKSIN_PLUS_PLUS_MINOR 0
+#define ASKSIN_PLUS_PLUS_SERVICE 0
 
-#define ASKSIN_PLUS_PLUS_IDENTIFIER F("AskSin++ V" ASKSIN_PLUS_PLUS_VERSION " (" __DATE__ " " __TIME__ ")")
+#define ASKSIN_PLUS_PLUS_VERSION (ASKSIN_PLUS_PLUS_MAJOR * 10000 \
+  + ASKSIN_PLUS_PLUS_MINOR * 100 + ASKSIN_PLUS_PLUS_SERVICE)
+
+#define STRINGIZE2(s) #s
+#define STRINGIZE(s) STRINGIZE2(s)
+#define ASKSIN_PLUS_PLUS_VERSION_STR STRINGIZE(ASKSIN_PLUS_PLUS_MAJOR) \
+  "." STRINGIZE(ASKSIN_PLUS_PLUS_MINOR) "." STRINGIZE(ASKSIN_PLUS_PLUS_SERVICE)
+
+#define ASKSIN_PLUS_PLUS_IDENTIFIER F("AskSin++ v" ASKSIN_PLUS_PLUS_VERSION_STR " (" __DATE__ " " __TIME__ ")")
 
 
 #define CONFIG_FREQ1     0
@@ -27,6 +37,15 @@
   #define enableInterrupt(pin,handler,mode) attachInterrupt(pin,handler,mode)
   #define disableInterrupt(pin) detachInterrupt(pin)
   #define memcmp_P(src,dst,count) memcmp((src),(dst),(count))
+#elif defined (ARDUINO_ARCH_STM32) && defined (STM32L1xx)
+  #define _delay_us(us) delayMicroseconds(us)
+  inline void _delay_ms(uint32_t ms) { do { delayMicroseconds(1000); } while ((--ms) > 0); }
+
+  typedef uint32_t WiringPinMode;
+  typedef uint8_t uint8;
+
+  #define enableInterrupt(pin,handler,mode) attachInterrupt(pin,handler,mode)
+  #define disableInterrupt(pin) detachInterrupt(pin)
 #else
   typedef uint8_t uint8;
   typedef uint16_t uint16;
@@ -176,7 +195,7 @@ public:
   static uint8_t readPin(uint8_t pinnr,uint8_t enablenr=0,uint8_t ms=0) {
     uint8_t value=0;
     pinMode(pinnr,INPUT_PULLUP);
-    if( enablenr != 0 ) {
+    if( enablenr != 0 && enablenr != 0xff) {
       digitalWrite(enablenr,HIGH);
       if( ms != 0 ) {
         _delay_ms(ms);
@@ -185,7 +204,7 @@ public:
     value = digitalRead(pinnr);
     pinMode(pinnr,OUTPUT);
     digitalWrite(pinnr,LOW);
-    if( enablenr != 0 ) {
+    if( enablenr != 0 && enablenr != 0xff) {
       digitalWrite(enablenr,LOW);
     }
     return value;
@@ -209,7 +228,6 @@ public:
   BuzzerType   buzzer;
 
   void init (const HMID& id) {
-    srand((unsigned int&)id);
     led.init();
     buzzer.init();
     bool ccinitOK = radio.init();
@@ -218,8 +236,8 @@ public:
     sysclock.init();
     // signal start to user
     led.set(ccinitOK ? LedStates::welcome : LedStates::failure);
-    // delay first send by random time
-    radio.setSendTimeout((rand() % 3500)+1000);
+    // delay first send by 'random' time
+    radio.setSendTimeout((id.id2()*10)+10);
   }
 
   void initBattery(uint16_t interval,uint8_t low,uint8_t critical) {
@@ -309,6 +327,28 @@ public:
 #endif
 };
 #endif
+
+template <class HAL,int TIMEOUT=60>
+class RadioWatchdog : public Alarm {
+public:
+  RadioWatchdog () : Alarm(0,false) {}
+  virtual ~RadioWatchdog () {}
+
+  virtual void trigger (AlarmClock& clock) {
+    typename HAL::RadioType& radio = HAL::RadioType::instance();
+    bool alive = radio.clearAlive();
+    if( alive == false ) {
+      radio.init();
+      radio.enable();
+    }
+    set(seconds2ticks(TIMEOUT));
+    clock.add(*this);
+  }
+
+  void start (AlarmClock& clock) {
+    trigger(clock);
+  }
+};
 
 }
 

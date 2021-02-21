@@ -1,7 +1,5 @@
 
-# Please use V4 Branch for your devices. The master branch is used for active development and may be instable
-
-# AskSin++  [![Build Status](https://travis-ci.com/pa-pa/AskSinPP.svg?branch=master)](https://travis-ci.org/pa-pa/AskSinPP)
+# AskSin++  ![.github/workflows/build-sketches.yml](https://github.com/pa-pa/AskSinPP/workflows/.github/workflows/build-sketches.yml/badge.svg)
 
 C++ implementation of the AskSin protocol
 
@@ -55,6 +53,7 @@ All defines has to set in the sketch before any header file is included.
 - **USE_HW_SERIAL** - generate device id and serial from cpu identifier (ATmega644, ATmega1284, STM32F1 only)
 - **USE_OTA_BOOTLOADER** - read device id and serial from the OTA bootloader
 - **USE_OTA_BOOTLOADER_FREQUENCY** - reuse the CC1101 frequence setting from the bootloader
+- **HIDE_IGNORE_MSG** - do not show `ignore`-packet dumps of received messages _(that are not for our device)_
 
 
 ## Defnies to reduce code size
@@ -66,6 +65,7 @@ All defines has to set in the sketch before any header file is included.
 - **NORTC** - removes code for RTC support
 - **NOCRC** - removes CRC calculation during startup - The EEPROM will no longer initialized when channel configuration is changed. A extra RESET is needed to initialize it again.
 - **SIMPLE_CC1101_INIT** - simple CC1101 initialization - No error reporting in case of errors.
+- **NDEBUG** - no serial (debug) output; no hardware serial initialized/used at all
 
 ## Alternative Device RESET Method
 

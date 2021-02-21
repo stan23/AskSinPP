@@ -1,6 +1,7 @@
 //- -----------------------------------------------------------------------------------------------------------------------
 // AskSin++
 // 2016-10-31 papa Creative Commons - http://creativecommons.org/licenses/by-nc-sa/3.0/de/
+// ci-test=yes board=328p aes=no
 //- -----------------------------------------------------------------------------------------------------------------------
 
 // define this to read the device id, serial and device type from bootloader section
@@ -63,6 +64,7 @@ class Sensors : public Alarm {
   Sht10<A4,A5>    sht10;
 public:
   Sensors () {}
+  virtual ~Sensors () {}
   // init the used hardware
   void init () { sht10.init(); }
   // return how many milliseconds the measure should start in front of sending the message
@@ -78,7 +80,7 @@ public:
 };
 
 
-typedef WeatherChannel<Hal,RTC,Sensors,PEERS_PER_CHANNEL,EXTRAMILLIS,WeatherList0> ChannelType;
+typedef WeatherChannel<Hal,RealTimeClock,Sensors,PEERS_PER_CHANNEL,EXTRAMILLIS,WeatherList0> ChannelType;
 typedef MultiChannelDevice<Hal,ChannelType,1,WeatherList0> WeatherType;
 
 Hal hal;

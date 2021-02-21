@@ -71,7 +71,7 @@ public:
 
   bool has (const Peer& p) const {
     for( uint8_t i=0; i<peers(); ++i ) {
-      if( p == peer(i) ) {
+      if( p == peerat(i) ) {
         return true;
       }
     }
@@ -80,14 +80,14 @@ public:
 
   uint8_t peerfor (const HMID& hmid) const {
     for( uint8_t i=0; i<peers(); ++i ) {
-      if( hmid == peer(i) ) {
+      if( hmid == peerat(i) ) {
         return i;
       }
     }
     return 0xff;
   }
 
-  Peer peer (uint8_t idx) const {
+  Peer peerat (uint8_t idx) const {
     Peer result;
     uint16_t paddr = peerAddress(idx);
     if( paddr != 0 ) {
@@ -102,7 +102,9 @@ public:
     uint8_t pidx = findpeer();
     if( pidx != 0xff ) {
       storage().setData(peerAddress(pidx),p);
-      getList3(pidx).single();
+      if( hasList3() == true ) {
+        getList3(pidx).single();
+      }
       return true;
     }
     return false;
@@ -117,13 +119,15 @@ public:
       uint8_t pidx2 = findpeer();
       if( pidx2 != 0xff ) {
         storage().setData(peerAddress(pidx2),p2);
-        if( p1.odd() == true ) {
-          getList3(pidx1).odd();
-          getList3(pidx2).even();
-        }
-        else {
-          getList3(pidx2).odd();
-          getList3(pidx1).even();
+        if( hasList3() == true ) {
+          if( p1.odd() == true ) {
+            getList3(pidx1).odd();
+            getList3(pidx2).even();
+          }
+          else {
+            getList3(pidx2).odd();
+            getList3(pidx1).even();
+          }
         }
         return true;
       }
@@ -141,7 +145,7 @@ public:
 
   uint8_t findpeer () const {
     for( int i=0; i<peers(); ++i ) {
-      if( peer(i).valid()==false ) {
+      if( peerat(i).valid()==false ) {
         return i;
       }
     }
@@ -150,7 +154,7 @@ public:
 
   bool deletepeer (const Peer& p) const {
     for( uint8_t i=0; i<peers(); ++i ) {
-      if( peer(i) == p ) {
+      if( peerat(i) == p ) {
         deletepeer(i);
       }
     }
@@ -160,9 +164,11 @@ public:
   void firstinit () {
     storage().clearData(address(),size());
     List1Type cl1 = getList1();
-    List2Type cl2 = getList2();
     cl1.defaults();
-    cl2.defaults();
+    if( hasList2() ) {
+      List2Type cl2 = getList2();
+      cl2.defaults();
+    }
   }
 
   List1Type getList1 () const {
@@ -178,7 +184,7 @@ public:
     uint16_t liststart = 0x00;
     if( hasList3() == true ) {
       for( uint8_t i=0; i<peers(); ++i ) {
-        if( peer(i) == p ) {
+        if( peerat(i) == p ) {
           liststart = peerAddress(i) + sizeof(Peer);
           break;
         }
@@ -191,7 +197,7 @@ public:
     uint16_t liststart = 0x00;
     if( hasList4() == true ) {
       for( uint8_t i=0; i<peers(); ++i ) {
-        if( peer(i) == p ) {
+        if( peerat(i) == p ) {
           liststart = peerAddress(i) + sizeof(Peer) + List3::size();
           break;
         }
@@ -214,6 +220,10 @@ public:
       liststart = peerAddress(pidx) + sizeof(Peer) + List3::size();
     }
     return List4Type(liststart);
+  }
+
+  static bool hasList2 () {
+    return List2Type::size() > 0;
   }
 
   static bool hasList3 () {
@@ -308,35 +318,39 @@ public:
   }
 
   bool process (const RemoteEventMsg& msg) {
-    bool lg = msg.isLong();
-    Peer p(msg.peer());
-    uint8_t cnt = msg.counter();
-    List3Type l3 = BaseChannel::getList3(p);
-    if( l3.valid() == true ) {
-      // l3.dump();
-      typename List3Type::PeerList pl = lg ? l3.lg() : l3.sh();
-      // pl.dump();
-      if( lg == false || cnt != lastmsgcnt || pl.multiExec() == true ) {
-        lastmsgcnt = cnt;
-        StateMachine::remote(pl,cnt);
+    if( BaseChannel::hasList3() ) {
+      bool lg = msg.isLong();
+      Peer p(msg.peer());
+      uint8_t cnt = msg.counter();
+      List3Type l3 = BaseChannel::getList3(p);
+      if( l3.valid() == true ) {
+        // l3.dump();
+        typename List3Type::PeerList pl = lg ? l3.lg() : l3.sh();
+        // pl.dump();
+        if( lg == false || cnt != lastmsgcnt || pl.multiExec() == true ) {
+          lastmsgcnt = cnt;
+          StateMachine::remote(pl,cnt);
+        }
+        return true;
       }
-      return true;
     }
     return false;
   }
 
   bool process (const SensorEventMsg& msg) {
-    bool lg = msg.isLong();
-    Peer p(msg.peer());
-    uint8_t cnt = msg.counter();
-    uint8_t value = msg.value();
-    List3Type l3 = BaseChannel::getList3(p);
-    if( l3.valid() == true ) {
-      // l3.dump();
-      typename List3Type::PeerList pl = lg ? l3.lg() : l3.sh();
-      // pl.dump();
-      StateMachine::sensor(pl,cnt,value);
-      return true;
+    if( BaseChannel::hasList3() ) {
+      bool lg = msg.isLong();
+      Peer p(msg.peer());
+      uint8_t cnt = msg.counter();
+      uint8_t value = msg.value();
+      List3Type l3 = BaseChannel::getList3(p);
+      if( l3.valid() == true ) {
+        // l3.dump();
+        typename List3Type::PeerList pl = lg ? l3.lg() : l3.sh();
+        // pl.dump();
+        StateMachine::sensor(pl,cnt,value);
+        return true;
+      }
     }
     return false;
   }
@@ -360,7 +374,7 @@ public:
   virtual bool inhibit () const = 0;
   virtual bool aesActive () const = 0;
   virtual bool has (const Peer& p) const = 0;
-  virtual Peer peer (uint8_t idx) const = 0;
+  virtual Peer peerat (uint8_t idx) const = 0;
   virtual bool peer (const Peer& p) = 0;
   virtual bool peer (const Peer& p1,const Peer& p2) = 0;
   virtual bool deletepeer (const Peer& p) = 0;
@@ -383,6 +397,7 @@ public:
   virtual GenericList getList2 () const = 0;
   virtual GenericList getList3 (const Peer& p) const = 0;
   virtual GenericList getList4 (const Peer& p) const = 0;
+  virtual bool hasList2 () const = 0;
   virtual bool hasList3 () const = 0;
   virtual bool hasList4 () const = 0;
 
@@ -408,7 +423,7 @@ public:
   virtual bool inhibit () const { return ch.inhibit(); }
   virtual bool aesActive () const { return ch.aesActive(); }
   virtual bool has (const Peer& p) const { return ch.has(p); };
-  virtual Peer peer (uint8_t idx) const { return ch.peer(idx); }
+  virtual Peer peerat (uint8_t idx) const { return ch.peerat(idx); }
   virtual bool peer (const Peer& p) { return ch.peer(p); }
   virtual bool peer (const Peer& p1,const Peer& p2) { return ch.peer(p1,p2); }
   virtual bool deletepeer (const Peer& p) { return ch.deletepeer(p); }
@@ -431,6 +446,7 @@ public:
   virtual GenericList getList2 () const { return ch.getList2(); }
   virtual GenericList getList3 (const Peer& p) const { return ch.getList3(p); }
   virtual GenericList getList4 (const Peer& p) const { return ch.getList4(p); }
+  virtual bool hasList2 () const { return ChannelType::hasList2(); }
   virtual bool hasList3 () const { return ChannelType::hasList3(); }
   virtual bool hasList4 () const { return ChannelType::hasList4(); }
 };

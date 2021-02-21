@@ -106,6 +106,9 @@ public:
     vcc = 1100UL * 1024 / ADC;
 #elif defined ARDUINO_ARCH_STM32F1
     vcc = 1200 * 4096 / adc_read(ADC1, 17);  // ADC sample to millivolts
+#elif defined ARDUINO_ARCH_STM32 && defined STM32L1xx
+    analogReadResolution(12);
+    vcc = 1216 * 4096 / analogRead(AVREF);
 #endif
     DPRINT(F("iVcc: ")); DDECLN(vcc);
     return vcc;
@@ -412,10 +415,15 @@ public:
    * \param period ticks until next measurement
    * \param clock clock to use for waiting
    */
-  void init(__attribute__((unused)) uint32_t period,__attribute__((unused)) AlarmClock& clock) {
+  void init() {
     unsetIdle();
   }
+  
+  void init(__attribute__((unused)) uint32_t period,__attribute__((unused)) AlarmClock& clock) {
+    init();
+  }
 
+  
   /**
    * Disable the continues battery measurement
    * Called by HAL before enter idle/sleep state
@@ -464,11 +472,16 @@ public:
    * \param period ticks until next measurement
    * \param clock clock to use for waiting
    */
-  void init(__attribute__((unused)) uint32_t period,__attribute__((unused)) AlarmClock& clock) {
+   
+  void init() {
     pinMode(SENSPIN, INPUT);
     unsetIdle();
   }
-
+  
+  void init(__attribute__((unused)) uint32_t period,__attribute__((unused)) AlarmClock& clock) {
+    init();
+  }
+  
   uint16_t getInternalVcc() {
     //read internal Vcc as reference voltage
     ADMUX &= ~(ADMUX_REFMASK | ADMUX_ADCMASK);

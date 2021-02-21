@@ -1,6 +1,7 @@
 //- -----------------------------------------------------------------------------------------------------------------------
 // AskSin++
 // 2018-02-08 papa Creative Commons - http://creativecommons.org/licenses/by-nc-sa/3.0/de/
+// ci-test=yes board=328p aes=no
 //- -----------------------------------------------------------------------------------------------------------------------
 
 // define this to read the device id, serial and device type from bootloader section
@@ -111,8 +112,7 @@ public:
     if( state != newstate ) {
       state = newstate;
       // get team leader - peer 0
-      uint8_t idx = 0;
-      Peer leader = peer(idx);
+      Peer leader = peerat(0);
       if( leader.valid() == true ) {
         SensorEventMsg& msg = (SensorEventMsg&)device().message();
         msg.init(device().nextcount(),number(),count++,state,device().battery().low());
